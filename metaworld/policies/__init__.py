@@ -61,6 +61,7 @@ from metaworld.policies.sawyer_plate_slide_side_v3_policy import (
 from metaworld.policies.sawyer_plate_slide_v3_policy import SawyerPlateSlideV3Policy
 from metaworld.policies.sawyer_push_back_v3_policy import SawyerPushBackV3Policy
 from metaworld.policies.sawyer_push_v3_policy import SawyerPushV3Policy
+from metaworld.policies.sawyer_push_right_v3_policy import SawyerPushRightV3Policy
 from metaworld.policies.sawyer_push_wall_v3_policy import SawyerPushWallV3Policy
 from metaworld.policies.sawyer_reach_v3_policy import SawyerReachV3Policy
 from metaworld.policies.sawyer_reach_wall_v3_policy import SawyerReachWallV3Policy
@@ -116,6 +117,7 @@ ENV_POLICY_MAP = dict(
         "reach-wall-v3": SawyerReachWallV3Policy,
         "push-back-v3": SawyerPushBackV3Policy,
         "push-v3": SawyerPushV3Policy,
+        "push-right-v3": SawyerPushRightV3Policy,
         "push-wall-v3": SawyerPushWallV3Policy,
         "shelf-place-v3": SawyerShelfPlaceV3Policy,
         "soccer-v3": SawyerSoccerV3Policy,
@@ -168,6 +170,7 @@ __all__ = [
     "SawyerPlateSlideV3Policy",
     "SawyerPushBackV3Policy",
     "SawyerPushV3Policy",
+    "SawyerPushRightV3Policy",
     "SawyerPushWallV3Policy",
     "SawyerReachV3Policy",
     "SawyerReachWallV3Policy",

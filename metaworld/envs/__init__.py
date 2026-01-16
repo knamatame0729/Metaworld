@@ -39,6 +39,7 @@ from metaworld.envs.sawyer_plate_slide_side_v3 import SawyerPlateSlideSideEnvV3
 from metaworld.envs.sawyer_plate_slide_v3 import SawyerPlateSlideEnvV3
 from metaworld.envs.sawyer_push_back_v3 import SawyerPushBackEnvV3
 from metaworld.envs.sawyer_push_v3 import SawyerPushEnvV3
+from metaworld.envs.sawyer_push_right_v3 import SawyerPushRightEnvV3
 from metaworld.envs.sawyer_push_wall_v3 import SawyerPushWallEnvV3
 from metaworld.envs.sawyer_reach_v3 import SawyerReachEnvV3
 from metaworld.envs.sawyer_reach_wall_v3 import SawyerReachWallEnvV3
@@ -91,6 +92,7 @@ __all__ = [
     "SawyerPlateSlideEnvV3",
     "SawyerPushBackEnvV3",
     "SawyerPushEnvV3",
+    "SawyerPushRightEnvV3",
     "SawyerPushWallEnvV3",
     "SawyerReachEnvV3",
     "SawyerReachWallEnvV3",
