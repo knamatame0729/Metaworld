@@ -10,7 +10,7 @@ import numpy as np
 import pygame  # type: ignore
 from pygame.locals import KEYDOWN, QUIT  # type: ignore
 
-from metaworld.envs.V3 import SawyerPickPlaceEnvV3
+from metaworld.envs import SawyerPickPlaceEnvV3
 
 pygame.init()
 screen = pygame.display.set_mode((400, 300))
@@ -35,7 +35,9 @@ char_to_action = {
 }
 
 
-env = SawyerPickPlaceEnvV3()
+env = SawyerPickPlaceEnvV3(
+    render_mode="human",
+)
 env._partially_observable = False
 env._freeze_rand_vec = False
 env._set_task_called = True
@@ -43,37 +45,49 @@ env.reset()
 env._freeze_rand_vec = True
 lock_action = False
 random_action = False
-obs = env.reset()
+obs, info = env.reset()
 action = np.zeros(4, dtype=np.float32)
-while True:
-    done = False
-    if not lock_action:
-        action[:3] = 0
-    if not random_action:
-        for event in pygame.event.get():
-            event_happened = True
-            if event.type == QUIT:
-                sys.exit()
-            if event.type == KEYDOWN:
-                char = event.dict["key"]
-                new_action = char_to_action.get(chr(char), None)
-                if new_action == "toggle":
-                    lock_action = not lock_action
-                elif new_action == "reset":
-                    done = True
-                elif new_action == "close":
-                    action[3] = 1
-                elif new_action == "open":
-                    action[3] = -1
-                elif new_action is not None and isinstance(new_action, np.ndarray):
-                    action[:3] = new_action[:3]
-                else:
-                    action = np.zeros(3, dtype=np.float32)
-                print(action)
-    else:
-        action = np.array(env.action_space.sample(), dtype=np.float32)
-    ob, reward, done, infos = env.step(action)
-    # time.sleep(1)
-    if done:
-        obs = env.reset()
-    env.render()
+
+try:
+    while True:
+        done = False
+        if not lock_action:
+            action[:3] = 0
+        if not random_action:
+            for event in pygame.event.get():
+                event_happened = True
+                if event.type == QUIT:
+                    sys.exit()
+                if event.type == KEYDOWN:
+                    char = event.dict["key"]
+                    new_action = char_to_action.get(chr(char), None)
+                    if isinstance(new_action, str):
+                        if new_action == "toggle":
+                            lock_action = not lock_action
+                        elif new_action == "reset":
+                            done = True
+                        elif new_action == "close":
+                            action[3] = 1
+                        elif new_action == "open":
+                            action[3] = -1
+                    elif isinstance(new_action, np.ndarray):
+                        action[:3] = new_action[:3]
+                    else:
+                        action[:3] = 0
+                    print(action)
+        else:
+            action = np.array(env.action_space.sample(), dtype=np.float32)
+        ob, reward, terminated, truncated, infos = env.step(action)
+        # Ignore truncation for keyboard control - only reset on manual 'r' key or termination
+        if terminated:
+            done = True
+        # time.sleep(1)
+        if done:
+            obs, info = env.reset()
+            env.curr_path_length = 0  # Reset path length counter
+        env.render()
+except KeyboardInterrupt:
+    print("Exiting...")
+finally:
+    env.close()
+    pygame.quit()

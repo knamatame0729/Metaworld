@@ -539,15 +539,15 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         obs_obj_max_len = 14
         obj_low = np.full(obs_obj_max_len, -np.inf, dtype=np.float64)
         obj_high = np.full(obs_obj_max_len, +np.inf, dtype=np.float64)
-        if self._partially_observable:
-            goal_low = np.zeros(3)
-            goal_high = np.zeros(3)
-        else:
-            assert (
-                self.goal_space is not None
-            ), "The goal space must be defined to use full observability"
+        # Use goal_space bounds if available, otherwise use -inf/+inf
+        # This handles dynamic _partially_observable changes where obs values
+        # can be either zeros or actual goal positions
+        if hasattr(self, 'goal_space') and self.goal_space is not None:
             goal_low = self.goal_space.low
             goal_high = self.goal_space.high
+        else:
+            goal_low = np.full(3, -np.inf, dtype=np.float64)
+            goal_high = np.full(3, +np.inf, dtype=np.float64)
         gripper_low = -1.0
         gripper_high = +1.0
         return Box(
@@ -678,7 +678,12 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         obs, info = super().reset()
         self._prev_obs = obs[:18].copy()
         obs[18:36] = self._prev_obs
-        obs = obs.astype(np.float64)
+        obs = np.clip(
+            obs,
+            a_max=self.sawyer_observation_space.high,
+            a_min=self.sawyer_observation_space.low,
+            dtype=np.float64,
+        )
         return obs, info
 
     def _reset_hand(self, steps: int = 50) -> None:
