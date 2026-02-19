@@ -8,9 +8,7 @@
       <include file="../objects/assets/panda.xml"/>
 
       <body name="obj" pos="0 0.6 0.02">
-
           <joint name="objjoint" type="free" limited='false' damping="0." armature="0."/>
-
           <inertial pos="0 0 0" mass=".75" diaginertia="8.80012e-04 8.80012e-04 8.80012e-04"/>
           <geom name="objGeom" type="cylinder" pos="0 0 0" solimp="0.99 0.99 0.01"
                 size="0.02 0.02" rgba="1 0 0 1" solref="0.01 1"
@@ -19,16 +17,22 @@
       </body>
 
       <!-- push goal -->
-      <site name="goal" pos="0.1 0.8 0.02" size="0.02"
-            rgba="0 0.8 0 1"/>
-
+      <site name="goal" pos="0.1 0.8 0.02" size="0.02" rgba="0 0.8 0 1"/>
     </worldbody>
 
+    <tendon>
+        <fixed name="split">
+            <joint joint="finger_joint1" coef="0.5"/>
+            <joint joint="finger_joint2" coef="0.5"/>
+        </fixed>
+    </tendon>
+
     <actuator>
-        <position ctrllimited="true" ctrlrange="-1 1" joint="r_close" kp="400" user="1"/>
-        <position ctrllimited="true" ctrlrange="-1 1" joint="l_close" kp="400" user="1"/>
+        <general class="panda" name="actuator8" tendon="split" forcerange="-100 100" ctrlrange="0 255"
+            gainprm="0.01568627451 0 0" biasprm="0 -100 -10"/>
     </actuator>
+
     <equality>
-        <weld body1="mocap" body2="hand" solref="0.02 1"></weld>
+        <weld body1="mocap" body2="hand" solref="0.02 1"/>
     </equality>
 </mujoco>
