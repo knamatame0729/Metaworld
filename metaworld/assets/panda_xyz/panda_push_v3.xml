@@ -4,6 +4,12 @@
     <include file="../objects/assets/block_dependencies.xml"/>
     <include file="../objects/assets/panda_dependencies.xml"/>
 
+    <!-- Optimized keyframe: hand at approx [0, 0.6, 0.2], gripper pointing down -->
+    <!-- Joint order: joint1-7 (arm), finger_joint1, finger_joint2, object freejoint (pos + quat) -->
+    <keyframe>
+      <key name="home" qpos="0 -0.3 0 2.0 0 1.8 0 0.04 0.04 0 0.6 0.02 1 0 0 0"/>
+    </keyframe>
+
     <worldbody>
       <include file="../objects/assets/panda.xml"/>
 

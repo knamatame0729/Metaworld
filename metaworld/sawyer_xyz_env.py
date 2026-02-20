@@ -701,8 +701,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
 
     def _get_state_rand_vec(self) -> npt.NDArray[np.float64]:
         """Gets or generates a random vector for the hand position at reset."""
-        if self._freeze_rand_vec:
-            assert self._last_rand_vec is not None
+        if self._freeze_rand_vec and self._last_rand_vec is not None:
             return self._last_rand_vec
         elif self.seeded_rand_vec:
             assert self._random_reset_space is not None

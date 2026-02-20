@@ -230,6 +230,13 @@ class PandaXYZEnv(PandaMocapBase, EzPickle):
         self.goal_space: Box | None = None
         self._last_stable_obs: npt.NDArray[np.float64] | None = None
 
+        # Apply keyframe "home" if it exists for optimized initial pose
+        if self.model.nkey > 0:
+            key_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, "home")
+            if key_id >= 0:
+                mujoco.mj_resetDataKeyframe(self.model, self.data, key_id)
+                mujoco.mj_forward(self.model, self.data)
+
         self.init_qpos = np.copy(self.data.qpos)
         self.init_qvel = np.copy(self.data.qvel)
         self._prev_obs = self._get_curr_obs_combined_no_goal()
@@ -262,24 +269,244 @@ class PandaXYZEnv(PandaMocapBase, EzPickle):
         pass
 
     def set_task(self, task: Task) -> None:
-        self._set_task_called = True
-        data = pickle.loads(task.data) if isinstance(task.data, bytes) else task.data
-        assert isinstance(data, dict)
-        self._last_rand_vec = data["rand_vec"]
-        self._freeze_rand_vec = True
-        self._last_stable_obs = data.get("_last_stable_obs", None)
+        """Sets the environment's task.
 
+        Args:
+            task: The task to set.
+        """
+        self._set_task_called = True
+        data = pickle.loads(task.data)
+        assert isinstance(self, data["env_cls"])
+        del data["env_cls"]
+        self._freeze_rand_vec = True
+        self._last_rand_vec = data["rand_vec"]
+        del data["rand_vec"]
+        new_observability = data["partially_observable"]
+        if new_observability != self._partially_observable:
+            # Force recomputation of the observation space
+            # See https://docs.python.org/3/library/functools.html#functools.cached_property
+            del self.panda_observation_space
+        self._partially_observable = new_observability
+        del data["partially_observable"]
+        self._set_task_inner(**data)
+
+    def set_xyz_action(self, action: npt.NDArray[Any]) -> None:
+        """Adjusts the position of the mocap body from the given action.
+        Moves each body axis in XYZ by the amount described by the action.
+
+        Args:
+            action: The action to apply (in offsets between :math:`[-1, 1]` for each axis in XYZ).
+        """
+        action = np.clip(action, -1, 1)
+        pos_delta = action * self.action_scale
+        new_mocap_pos = self.data.mocap_pos + pos_delta[None]
+        new_mocap_pos = np.clip(new_mocap_pos, self.mocap_low, self.mocap_high)
+        self.data.mocap_pos = new_mocap_pos
+        self.data.mocap_quat = np.array([0, 1, 0, 0])  # Keep orientation fixed (gripper pointing down)
+
+    def discretize_goal_space(self, goals: list) -> None:
+        """Discretizes the goal space into a Discrete space.
+        Current disabled and callign it will stop execution.
+
+        Args:
+            goals: List of goals to discretize
+        """
+        assert False, "Discretization is not supported at the moment."
+        assert len(goals) >= 1
+        self.discrete_goals = goals
+        # update the goal_space to a Discrete space
+        self.discrete_goal_space = Discrete(len(self.discrete_goals))
+
+    def _set_obj_xyz(self, pos: npt.NDArray[Any]) -> None:
+        """Sets the position of the object.
+
+        Args:
+            pos: The position to set as a numpy array of 3 elements (XYZ value).
+        """
+        qpos = self.data.qpos.flatten().copy()
+        qvel = self.data.qvel.flatten().copy()
+        qpos[9:12] = pos.copy()
+        qvel[9:15] = 0
+        self.set_state(qpos, qvel)
+
+    def _get_site_pos(self, site_name: str) -> npt.NDArray[np.float64]:
+        """Gets the position of a given site.
+
+        Args:
+            site_name: The name of the site to get the position of.
+
+        Returns:
+            Flat, 3 element array indicating site's location.
+        """
+        return self.data.site(site_name).xpos.copy()
+    
+    def _set_pos_site(self, name: str, pos: npt.NDArray[Any]) -> None:
+        """Sets the position of a given site.
+
+        Args:
+            name: The site's name
+            pos: Flat, 3 element array indicating site's location
+        """
+        assert isinstance(pos, np.ndarray)
+        assert pos.ndim == 1
+
+        self.data.site(name).xpos = pos[:3]
+
+    @property
+    def _target_site_config(self) -> list[tuple[str, npt.NDArray[Any]]]:
+        """Retrieves site name(s) and position(s) corresponding to env targets."""
+        assert self._target_pos is not None
+        return [("goal", self._target_pos)]
+    
+    @property
+    def touching_main_object(self) -> bool:
+        """Calls `touching_object` for the ID of the env's main object.
+
+        Returns:
+            Whether the gripper is touching the object
+        """
+        return self.touching_object(self._get_id_main_object())
+    
+    def touching_object(self, object_geom_id: int) -> bool:
+        """Determines whether the gripper is touching the object with given id.
+
+        Args:
+            object_geom_id: the ID of the object in question
+
+        Returns:
+            Whether the gripper is touching the object
+        """
+
+        leftfinger_geom_id = self.data.geom("left_finger").id
+        rightfinger_geom_id = self.data.geom("right_finger").id
+
+        leftfinger_object_contacts = [
+            x
+            for x in self.data.contact
+            if (
+                leftfinger_geom_id in (x.geom1, x.geom2)
+                and object_geom_id in (x.geom1, x.geom2)
+            )
+        ]
+
+        rightfinger_object_contacts = [
+            x
+            for x in self.data.contact
+            if (
+                rightfinger_geom_id in (x.geom1, x.geom2)
+                and object_geom_id in (x.geom1, x.geom2)
+            )
+        ]
+
+        leftfinger_object_contact_force = sum(
+            self.data.efc_force[x.efc_address] for x in leftfinger_object_contacts
+        )
+
+        rightfinger_object_contact_force = sum(
+            self.data.efc_force[x.efc_address] for x in rightfinger_object_contacts
+        )
+
+        return 0 < leftfinger_object_contact_force and 0 < rightfinger_object_contact_force
+    
+    def _get_id_main_object(self) -> int:
+        return self.data.geom("objGeom").id
+    
+    def _get_pos_objects(self) -> npt.NDArray[Any]:
+        """Retrieves object position(s) from mujoco properties or instance vars.
+
+        Returns:
+            Flat array (usually 3 elements) representing the object(s)' position(s)
+        """
+        # Throw error rather than making this an @abc.abstractmethod so that
+        # V1 environments don't have to implement it
+        raise NotImplementedError
+    
+    def _get_quat_objects(self) -> npt.NDArray[Any]:
+        """Retrieves object quaternion(s) from mujoco properties.
+
+        Returns:
+            Flat array (usually 4 elements) representing the object(s)' quaternion(s)
+        """
+        # Throw error rather than making this an @abc.abstractmethod so that
+        # V1 environments don't have to implement it
+        raise NotImplementedError
+    
+    def _get_pos_goal(self) -> npt.NDArray[Any]:
+        """Retrieves goal position from mujoco properties or instance vars.
+
+        Returns:
+            Flat array (3 elements) representing the goal position
+        """
+        assert isinstance(self._target_pos, np.ndarray)
+        assert self._target_pos.ndim == 1
+        return self._target_pos
+
+    def _get_curr_obs_combined_no_goal(self) -> npt.NDArray[np.float64]:
+        """Combines the end effector's {pos, closed amount} and the object(s)' {pos, quat} into a single flat observation.
+
+        Note: The goal's position is *not* included in this.
+
+        Returns:
+            The flat observation array (18 elements)
+        """
+        pos_hand = self.get_endeff_pos()
+
+        # Use left_finger and right_finger for Panda
+        finger_right = self.data.body("right_finger")
+        finger_left = self.data.body("left_finger")
+
+        gripper_distance_apart = np.linalg.norm(finger_right.xpos - finger_left.xpos)
+        gripper_distance_apart = np.clip(gripper_distance_apart / 0.1, 0.0, 1.0)
+
+        obs_obj_padded = np.zeros(self._obs_obj_max_len)
+        obj_pos = self._get_pos_objects()
+        assert len(obj_pos) % 3 == 0
+        obj_pos_split = np.split(obj_pos, len(obj_pos) // 3)
+
+        obj_quat = self._get_quat_objects()
+        assert len(obj_quat) % 4 == 0
+        obj_quat_split = np.split(obj_quat, len(obj_quat) // 4)
+        obs_obj_padded[: len(obj_pos) + len(obj_quat)] = np.hstack(
+            [np.hstack((pos, quat)) for pos, quat in zip(obj_pos_split, obj_quat_split)]
+        )
+        return np.hstack((pos_hand, gripper_distance_apart, obs_obj_padded))
+    
+    def _get_obs(self) -> npt.NDArray[np.float64]:
+        """Frame stacks `_get_curr_obs_combined_no_goal()` and concatenates the goal position to form a single flat observation.
+
+        Returns:
+            The flat observation array (39 elements)
+        """
+        # do fram stacking
+        pos_goal = self._get_pos_goal()
+        if self._partially_observable:
+            pos_goal = np.zeros_like(pos_goal)
+        curr_obs = self._get_curr_obs_combined_no_goal()
+        # do frame stacking
+        obs = np.hstack((curr_obs, self._prev_obs, pos_goal))
+        self._prev_obs = curr_obs
+        return obs
+    
+    def _get_obs_dict(self) -> ObservationDict:
+        obs = self._get_obs()
+        return dict(
+            state_observation=obs,
+            state_desired_goal=self._get_pos_goal(),
+            state_achieved_goal=obs[3:-3],
+        )
+    
     @cached_property
     def panda_observation_space(self) -> Box:
         obs_obj_max_len = 14
         obj_low = np.full(obs_obj_max_len, -np.inf, dtype=np.float64)
         obj_high = np.full(obs_obj_max_len, +np.inf, dtype=np.float64)
-        goal_low = np.zeros(3, dtype=np.float64) + np.array(
-            [-0.1, 0.85, 0.0], dtype=np.float64
-        )
-        goal_high = np.zeros(3, dtype=np.float64) + np.array(
-            [0.1, 0.9 + 1e-7, 0.4], dtype=np.float64
-        )
+
+        if hasattr(self, 'goal_space') and self.goal_space is not None:
+            goal_low = self.goal_space.low
+            goal_high = self.goal_space.high
+        else:
+            goal_low = np.full(3, -np.inf, dtype=np.float64)
+            goal_high = np.full(3, +np.inf, dtype=np.float64)
         gripper_low = -1.0
         gripper_high = +1.0
         return Box(
@@ -308,27 +535,139 @@ class PandaXYZEnv(PandaMocapBase, EzPickle):
             dtype=np.float64,
         )
 
-    @property
-    def _target_site_config(self) -> list[tuple[str, npt.NDArray[Any]]]:
+    def step(
+        self, action: npt.NDArray[np.float32]
+    ) -> tuple[npt.NDArray[np.float64], SupportsFloat, bool, bool, dict[str, Any]]:
+        """Step the environment.
+
+        Args:
+            action: The action to take. Must be a 4 element array of floats.
+
+        Returns:
+            The (next_obs, reward, terminated, truncated, info) tuple.
+        """
+        assert len(action) == 4, f"Actions should be 4D, got {len(action)}"
+        self.set_xyz_action(action[:3])
+
+        if self.curr_path_length >= self.max_path_length:
+            raise ValueError("You must reset the env manually once truncate==True")
+        # Panda has single tendon-based gripper actuator: 0=closed, 255=open
+        gripper_ctrl = (action[-1] + 1) / 2 * 255  # Map [-1, 1] to [0, 255]
+        self.do_simulation([gripper_ctrl], n_frames=self.frame_skip)
+
+        self.curr_path_length += 1
+
+        # Running the simulator can sometimes mess up site positions, so
+        # re-position them here to make sure they're accurate
+        for site in self._target_site_config:
+            self._set_pos_site(*site)
+
+        if self._did_see_sim_exception:
+            assert self._last_stable_obs is not None
+            return (
+                self._last_stable_obs,  # observation just before going unstable
+                0.0,  # reward (penalize for causing instability)
+                False,
+                False,  # termination flag always False
+                {  # info
+                    "success": False,
+                    "near_object": 0.0,
+                    "grasp_success": False,
+                    "grasp_reward": 0.0,
+                    "in_place_reward": 0.0,
+                    "obj_to_target": 0.0,
+                    "unscaled_reward": 0.0,
+                },
+            )
+
+        mujoco.mj_forward(self.model, self.data)
+        self._last_stable_obs = self._get_obs()
+
+        self._last_stable_obs = np.clip(
+            self._last_stable_obs,
+            a_max=self.panda_observation_space.high,
+            a_min=self.panda_observation_space.low,
+            dtype=np.float64,
+        )
+        assert isinstance(self._last_stable_obs, np.ndarray)
+        reward, info = self.evaluate_state(self._last_stable_obs, action)
+        # step will never return a terminate==True if there is a success
+        # but we can return truncate=True if the current path length == max path length
+        truncate = False
+        if self.curr_path_length == self.max_path_length:
+            truncate = True
+        return (
+            np.array(self._last_stable_obs, dtype=np.float64),
+            reward,
+            False,
+            truncate,
+            info,
+        )
+
+    def evaluate_state(
+        self, obs: npt.NDArray[np.float64], action: npt.NDArray[np.float32]
+    ) -> tuple[float, dict[str, Any]]:
+        """Does the heavy-lifting for `step()` -- namely, calculating reward and populating the `info` dict with training metrics.
+
+        Returns:
+            Tuple of reward between 0 and 10 and a dictionary which contains useful metrics (success,
+                near_object, grasp_success, grasp_reward, in_place_reward,
+                obj_to_target, unscaled_reward)
+        """
+        # Throw error rather than making this an @abc.abstractmethod so that
+        # V1 environments don't have to implement it
         raise NotImplementedError
-
-    def _set_pos_site(self, name: str, pos: npt.NDArray[Any]) -> None:
-        self.data.site(name).xpos = pos
-
-    def _get_pos_site(self, name: str) -> npt.NDArray[Any]:
-        return self.data.site(name).xpos.copy()
-
-    def _set_obj_xyz(self, pos: npt.NDArray[Any]) -> None:
-        qpos = self.data.qpos.flatten().copy()
-        qvel = self.data.qvel.flatten().copy()
-        qpos[9:12] = pos.copy()
-        qvel[9:15] = 0
+    
+    def reset_model(self) -> npt.NDArray[np.float64]:
+        qpos = self.init_qpos
+        qvel = self.init_qvel
         self.set_state(qpos, qvel)
+        return self._get_obs()
+    
+    def reset(
+        self, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[npt.NDArray[np.float64], dict[str, Any]]:
+        """Resets the environment.
 
-    def _get_state_rand_vec(self) -> npt.NDArray[Any]:
+        Args:
+            seed: The seed to use. Ignored, use `seed()` instead.
+            options: Additional options to pass to the environment. Ignored.
+
+        Returns:
+            The `(obs, info)` tuple.
+        """
+        self.curr_path_length = 0
+        self.reset_model()
+        obs, info = super().reset()
+        self._prev_obs = obs[:18].copy()
+        obs[18:36] = self._prev_obs
+        obs = np.clip(
+            obs,
+            a_max=self.panda_observation_space.high,
+            a_min=self.panda_observation_space.low,
+            dtype=np.float64,
+        )
+        return obs, info
+    
+    def _reset_hand(self, steps: int = 50) -> None:
+        """Resets the hand position.
+
+        Args:
+            steps: The number of steps to take to reset the hand.
+        """
+        mocap_id = self.model.body_mocapid[self.data.body("mocap").id]
+        for _ in range(steps):
+            self.data.mocap_pos[mocap_id][:] = self.hand_init_pos
+            self.data.mocap_quat[mocap_id][:] = np.array([0, 1, 0, 0])
+            self.do_simulation([255], self.frame_skip)
+        self.init_tcp = self.tcp_center
+
+    def _get_state_rand_vec(self) -> npt.NDArray[np.float64]:
+        """Gets or generates a random vector for the hand position at reset."""
         if self._freeze_rand_vec and self._last_rand_vec is not None:
             return self._last_rand_vec
         elif self.seeded_rand_vec:
+            assert self._random_reset_space is not None
             rand_vec = self.np_random.uniform(
                 self._random_reset_space.low,
                 self._random_reset_space.high,
@@ -337,147 +676,14 @@ class PandaXYZEnv(PandaMocapBase, EzPickle):
             self._last_rand_vec = rand_vec
             return rand_vec
         else:
-            rand_vec = np.random.uniform(
+            assert self._random_reset_space is not None
+            rand_vec: npt.NDArray[np.float64] = np.random.uniform(  # type: ignore
                 self._random_reset_space.low,
                 self._random_reset_space.high,
                 size=self._random_reset_space.low.size,
-            )
+            ).astype(np.float64)
             self._last_rand_vec = rand_vec
             return rand_vec
-
-    def _get_site_pos(self, siteName: str) -> npt.NDArray[Any]:
-        return self.data.site(siteName).xpos.copy()
-
-    def _set_pos_ctrl(self, pos: npt.NDArray[Any]) -> None:
-        self.data.mocap_pos[0] = pos
-
-    def _set_gripper_ctrl(self, gripper_ctrl: float) -> None:
-        # Panda gripper control - single value for both fingers
-        self.data.ctrl[0] = gripper_ctrl
-
-    def _reset_hand(self, steps: int = 50) -> None:
-        assert self.hand_init_pos is not None
-        for _ in range(steps):
-            self._set_pos_ctrl(self.hand_init_pos)
-            self._set_gripper_ctrl(0.0)
-            mujoco.mj_step(self.model, self.data)
-
-    def reset(
-        self,
-        seed: int | None = None,
-        options: dict | None = None,
-    ) -> tuple[npt.NDArray[np.float64], dict]:
-        self.curr_path_length = 0
-        self._did_see_sim_exception = False
-        return super().reset(seed=seed, options=options)
-
-    def _get_curr_obs_combined_no_goal(self) -> npt.NDArray[np.float64]:
-        """Get current observation without goal."""
-        pos_hand = self.get_endeff_pos()
-
-        # Use left_finger and right_finger for Panda
-        finger_right = self.data.body("right_finger")
-        finger_left = self.data.body("left_finger")
-
-        gripper_distance_apart = np.linalg.norm(finger_right.xpos - finger_left.xpos)
-        gripper_distance_apart = np.clip(gripper_distance_apart / 0.1, 0.0, 1.0)
-
-        obs_obj_padded = np.zeros(self._obs_obj_max_len)
-        obj_pos = self._get_pos_objects()
-        assert len(obj_pos) % 3 == 0
-        obj_pos_split = np.split(obj_pos, len(obj_pos) // 3)
-
-        obj_quat = self._get_quat_objects()
-        assert len(obj_quat) % 4 == 0
-        obj_quat_split = np.split(obj_quat, len(obj_quat) // 4)
-        obs_obj_padded[: len(obj_pos) + len(obj_quat)] = np.hstack(
-            [np.hstack((pos, quat)) for pos, quat in zip(obj_pos_split, obj_quat_split)]
-        )
-        return np.hstack((pos_hand, gripper_distance_apart, obs_obj_padded))
-
-    def _get_obs(self) -> npt.NDArray[np.float64]:
-        pos_goal = self._get_pos_goal()
-        if self._partially_observable:
-            pos_goal = np.zeros_like(pos_goal)
-        curr_obs = self._get_curr_obs_combined_no_goal()
-        obs = np.hstack((curr_obs, self._prev_obs, pos_goal))
-        self._prev_obs = curr_obs
-        return obs
-
-    def _get_obs_dict(self) -> ObservationDict:
-        obs = self._get_obs()
-        return ObservationDict(
-            state_observation=obs,
-            state_desired_goal=self._get_pos_goal(),
-            state_achieved_goal=obs[4:7],
-        )
-
-    def _get_pos_objects(self) -> npt.NDArray[Any]:
-        raise NotImplementedError
-
-    def _get_quat_objects(self) -> npt.NDArray[Any]:
-        raise NotImplementedError
-
-    def _get_pos_goal(self) -> npt.NDArray[Any]:
-        assert isinstance(self._target_pos, np.ndarray)
-        assert self._target_pos.ndim == 1
-        return self._target_pos
-
-    @property
-    def touching_main_object(self) -> bool:
-        return self.touching_object(self._get_id_main_object())
-
-    def touching_object(self, object_geom_id: int) -> bool:
-        """Check if gripper is touching the object."""
-        # Get finger collision geoms - we'll use any collision with fingers
-        contacts_with_object = []
-        for contact in self.data.contact:
-            if object_geom_id in (contact.geom1, contact.geom2):
-                contacts_with_object.append(contact)
-        return len(contacts_with_object) > 0
-
-    def _get_id_main_object(self) -> int:
-        return self.data.geom("objGeom").id
-
-    def step(
-        self, action: npt.NDArray[np.float32]
-    ) -> tuple[npt.NDArray[np.float64], SupportsFloat, bool, bool, dict[str, Any]]:
-        assert len(action) == 4, f"Actions should be 4D, got {len(action)}"
-
-        self.curr_path_length += 1
-
-        try:
-            # XYZ position control
-            pos_delta = action[:3] * self.action_scale
-            new_mocap_pos = self.data.mocap_pos[0] + pos_delta
-            new_mocap_pos = np.clip(new_mocap_pos, self.mocap_low, self.mocap_high)
-            self._set_pos_ctrl(new_mocap_pos)
-
-            # Gripper control (action[3])
-            gripper_ctrl = action[3]
-            # Map from [-1, 1] to gripper control range [0, 255]
-            gripper_ctrl = (gripper_ctrl + 1) / 2 * 255
-            self._set_gripper_ctrl(gripper_ctrl)
-
-            for _ in range(self.frame_skip):
-                mujoco.mj_step(self.model, self.data)
-
-        except mujoco.MujocoException as err:
-            print(f"MuJoCo simulation error: {err}")
-            self._did_see_sim_exception = True
-
-        obs = self._get_obs()
-
-        reward, info = self.evaluate_state(obs, action)
-        terminated = False
-        truncated = False
-
-        return obs, reward, terminated, truncated, info
-
-    def evaluate_state(
-        self, obs: npt.NDArray[np.float64], action: npt.NDArray[np.float32]
-    ) -> tuple[float, dict[str, Any]]:
-        raise NotImplementedError
 
     def _gripper_caging_reward(
         self,

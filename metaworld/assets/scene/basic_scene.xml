@@ -43,7 +43,10 @@
             <geom material="table_wood" group="1" mesh="tablebody" pos="0 0 -0.65" type="mesh" conaffinity="0"
                   contype="0"/>
             <geom material="table_col" group="4" pos="0.0 0.0 -0.46" size="0.7 0.4 0.46" type="box" conaffinity="1"
-                  contype="0"/>
+                  contype="1"/>
+            <!-- Table top collision surface -->
+            <geom name="tabletop_collision" group="4" pos="0.0 0.0 0.0" size="0.7 0.4 0.027" type="box" 
+                  conaffinity="1" contype="1" rgba="0 0 0 0"/>
         </body>
 
         <body name="RetainingWall" pos="0.0 0.6 0.06">
