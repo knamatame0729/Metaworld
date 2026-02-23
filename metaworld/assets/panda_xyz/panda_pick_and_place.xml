@@ -6,14 +6,14 @@
 
     <!-- Optimized keyframe: hand at approx [0, 0.6, 0.2], gripper pointing down -->
     <!-- Joint order: joint1-7 (arm), finger_joint1, finger_joint2, object freejoint (pos + quat) -->
-    <keyframe>
-      <key name="home" qpos="0 0.3 0.8 -2.0 0 1.8 0 0.04 0.04 0 0.8 0.02 1 0 0 0"/>
-    </keyframe>
+    <!-- <keyframe>
+      <key name="home" qpos="-1.0 -0.8 0 -1.4 0 2.8 0 0.04 0.04 0 0.8 0.02 1 0 0 0"/>
+    </keyframe> -->
 
     <worldbody>
       <include file="../objects/assets/panda.xml"/>
 
-      <body name="obj" pos="0 0.2 0.02">
+      <body name="obj" pos="0 0.6 0.02">
 
           <joint name="objjoint" type="free" limited='false' damping="0." armature="0."/>
 
@@ -42,6 +42,7 @@
     </actuator>
 
     <equality>
-        <weld body1="mocap" body2="hand" solref="0.02 1"/>
+        <joint joint1="finger_joint1" joint2="finger_joint2" solimp="0.95 0.99 0.001" solref="0.005 1"/>
+        <weld body1="mocap" body2="hand" solref="0.05 1" solimp="0.5 0.9 0.05"/>
     </equality>
 </mujoco>

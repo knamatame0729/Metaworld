@@ -56,7 +56,7 @@ class PandaPickPlaceEnvV3(PandaXYZEnv):
         self.init_config: InitConfigDict = {
             "obj_init_angle": 0.3,
             "obj_init_pos": np.array([0, 0.6, 0.02]),
-            "hand_init_pos": np.array([0, 0.6, 0.2]),
+            "hand_init_pos": np.array([0, 0.5, 0.2]),
         }
 
         self.goal = np.array([0.1, 0.8, 0.2])
