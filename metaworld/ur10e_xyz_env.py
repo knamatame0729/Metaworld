@@ -65,7 +65,7 @@ class UR10eMocapBase(mjenv_gym):
 
     def get_endeff_pos(self) -> npt.NDArray[Any]:
         """Returns the position of the end effector (hand)."""
-        return self.tcp_center
+        return self.data.body("base").xpos
 
     @property
     def tcp_center(self) -> npt.NDArray[Any]:
@@ -125,7 +125,7 @@ class UR10eMocapBase(mjenv_gym):
             for i in range(self.model.eq_data.shape[0]):
                 if self.model.eq_type[i] == mujoco.mjtEq.mjEQ_WELD:
                     self.model.eq_data[i] = np.array(
-                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 5.0]
+                        [0.0, 0.0, 0.1275, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 5.0]
                     )
 
 
@@ -156,7 +156,7 @@ class UR10eXYZEnv(UR10eMocapBase, EzPickle):
     def __init__(
         self,
         frame_skip: int = 5,
-        hand_low: XYZ = (-0.2, 0.55, 0.2),
+        hand_low: XYZ = (-0.2, 0.55, 0.18),
         hand_high: XYZ = (0.2, 0.75, 0.3),
         mocap_low: XYZ | None = None,
         mocap_high: XYZ | None = None,
@@ -642,25 +642,25 @@ class UR10eXYZEnv(UR10eMocapBase, EzPickle):
     def _reset_hand(self, steps: int = 50) -> None:
         mocap_id = self.model.body_mocapid[self.data.body("mocap").id]
         
-        # 全関節角度を直接指定
+        # Set the robot's joints
         qpos = self.data.qpos.copy()
         qpos[0] = -1.5708  # shoulder_pan
         qpos[1] = -1.63  # shoulder_lift
         qpos[2] =  2.61  # elbow
-        qpos[3] = -2.64  # wrist_1
+        qpos[3] = -2.5  # wrist_1
         qpos[4] = -1.5708  # wrist_2
         qpos[5] =  0       # wrist_3
         self.data.qpos[:] = qpos
         mujoco.mj_forward(self.model, self.data)
         
-        # mocapをその姿勢に合わせる
+        # Use same quaternion of hand at reset
         hand_id = self.model.body("base").id
         target_quat = self.data.xquat[hand_id].copy()
         
         for _ in range(steps):
             self.data.mocap_pos[mocap_id][:] = self.hand_init_pos
             self.data.mocap_quat[mocap_id][:] = target_quat
-            self.do_simulation([1], self.frame_skip)
+            self.do_simulation([0], self.frame_skip)
         self.init_tcp = self.tcp_center
 
     def _get_state_rand_vec(self) -> npt.NDArray[np.float64]:

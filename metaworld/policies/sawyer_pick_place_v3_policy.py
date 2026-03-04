@@ -45,6 +45,8 @@ class SawyerPickPlaceV3Policy(Policy):
         if np.linalg.norm(pos_curr[:2] - pos_puck[:2]) > 0.02:
             return pos_puck + np.array([0.0, 0.0, 0.1])
         # Once XY error is low enough, drop end effector down on top of puck
+        # Note: increased threshold from 0.04 to 0.06 to handle cases where
+        # the puck gets bumped slightly during approach
         elif abs(pos_curr[2] - pos_puck[2]) > 0.05 and pos_puck[-1] < 0.04:
             return pos_puck + np.array([0.0, 0.0, 0.03])
         # Wait for gripper to close before continuing to move

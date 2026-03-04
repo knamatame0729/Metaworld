@@ -58,7 +58,7 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
         self.init_config: InitConfigDict = {
             "obj_init_angle": 0.3,
             "obj_init_pos": np.array([0, 0.6, 0.02]),
-            "hand_init_pos": np.array([0, 0.2, 0.2]),
+            "hand_init_pos": np.array([0, 0.6, 0.2]),
         }
 
         self.goal = np.array([0.1, 0.8, 0.2])
@@ -252,7 +252,7 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
     ) -> tuple[float, float, float, float, float, float]:
         assert self._target_pos is not None and self.obj_init_pos is not None
         if self.reward_function_version == "v2":
-            _TARGET_RADIUS: float = 0.05
+            _TARGET_RADIUS: float = 0.07
             tcp = self.tcp_center
             obj = obs[4:7]
             tcp_opened = obs[3]
@@ -260,6 +260,9 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
 
             obj_to_target = float(np.linalg.norm(obj - target))
             tcp_to_obj = float(np.linalg.norm(obj - tcp))
+
+            initial_distance = float(np.linalg.norm(self.obj_init_pos - target))
+            
             in_place_margin = np.linalg.norm(self.obj_init_pos - target)
 
             in_place = reward_utils.tolerance(
@@ -281,8 +284,27 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
                 and (obj[2] - 0.01 > self.obj_init_pos[2])
             ):
                 reward += 1.0 + 5.0 * in_place
+                reward = reward
             if obj_to_target < _TARGET_RADIUS:
                 reward = 10.0
+
+            # object_grasped = self._gripper_caging_reward(action, obj)
+            
+            # if obj_to_target < _TARGET_RADIUS:
+            #     reward = 10.0
+            # else:
+            #     reward = 10.0 * np.exp(-2.0 * obj_to_target)
+
+            # in_place_margin = np.linalg.norm(self.obj_init_pos - target)
+            # in_place = reward_utils.tolerance(
+            #     obj_to_target,
+            #     bounds=(0, _TARGET_RADIUS),
+            #     margin=in_place_margin,
+            #     sigmoid="long_tail",
+            # )
+            
+            
+
             return (
                 reward,
                 tcp_to_obj,
@@ -311,13 +333,13 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
             reachDistxy = np.linalg.norm(objPos[:-1] - fingerCOM[:-1])
             zRew = np.linalg.norm(fingerCOM[-1] - self.init_tcp[-1])
 
-            if reachDistxy < 0.05:
+            if reachDistxy < 0.07:
                 reachRew = -reachDist
             else:
                 reachRew = -reachDistxy - 2 * zRew
 
             # incentive to close fingers when reachDist is small
-            if reachDist < 0.05:
+            if reachDist < 0.07:
                 reachRew = -reachDist + max(action[-1], 0) / 50
             tolerance = 0.01
             if objPos[2] >= (heightTarget - tolerance):

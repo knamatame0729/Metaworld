@@ -38,7 +38,7 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
     ) -> None:
         goal_low = (-0.1, 0.8, 0.05)
         goal_high = (0.1, 0.9, 0.3)
-        hand_low = (-0.5, 0.40, 0.2)
+        hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         obj_low = (-0.1, 0.6, 0.02)
         obj_high = (0.1, 0.7, 0.02)
@@ -57,7 +57,7 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
         self.init_config: InitConfigDict = {
             "obj_init_angle": 0.3,
             "obj_init_pos": np.array([0, 0.6, 0.02]),
-            "hand_init_pos": np.array([0, 0.5, 0.2]),
+            "hand_init_pos": np.array([0, 0.6, 0.2]),
         }
 
         self.goal = np.array([0.1, 0.8, 0.2])
@@ -256,6 +256,36 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
             tcp_to_obj = float(np.linalg.norm(obj - tcp))
             in_place_margin = np.linalg.norm(self.obj_init_pos - target)
 
+            # in_place = reward_utils.tolerance(
+            #     obj_to_target,
+            #     bounds=(0, _TARGET_RADIUS),
+            #     margin=in_place_margin,
+            #     sigmoid="long_tail",
+            # )
+
+            # object_grasped = self._gripper_caging_reward(action, obj)
+            # in_place_and_object_grasped = reward_utils.hamacher_product(
+            #     object_grasped, in_place
+            # )
+            # reward = in_place_and_object_grasped
+
+            # if (
+            #     tcp_to_obj < 0.02
+            #     and (tcp_opened > 0)
+            #     and (obj[2] - 0.01 > self.obj_init_pos[2])
+            # ):
+            #     reward += 1.0 + 5.0 * in_place
+            # if obj_to_target < _TARGET_RADIUS:
+            #     reward = 10.0
+
+            object_grasped = self._gripper_caging_reward(action, obj)
+            
+            if obj_to_target < _TARGET_RADIUS:
+                reward = 10.0
+            else:
+                reward = 10.0 * np.exp(-2.0 * obj_to_target)
+
+            in_place_margin = np.linalg.norm(self.obj_init_pos - target)
             in_place = reward_utils.tolerance(
                 obj_to_target,
                 bounds=(0, _TARGET_RADIUS),
@@ -263,20 +293,6 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
                 sigmoid="long_tail",
             )
 
-            object_grasped = self._gripper_caging_reward(action, obj)
-            in_place_and_object_grasped = reward_utils.hamacher_product(
-                object_grasped, in_place
-            )
-            reward = in_place_and_object_grasped
-
-            if (
-                tcp_to_obj < 0.02
-                and (tcp_opened > 0)
-                and (obj[2] - 0.01 > self.obj_init_pos[2])
-            ):
-                reward += 1.0 + 5.0 * in_place
-            if obj_to_target < _TARGET_RADIUS:
-                reward = 10.0
             return (
                 reward,
                 tcp_to_obj,

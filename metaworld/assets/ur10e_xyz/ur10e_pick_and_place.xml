@@ -8,7 +8,7 @@
     <worldbody>
       <include file="../objects/assets/ur10e.xml"/>
 
-      <body name="obj" pos="0 0.6 0.0">
+      <body name="obj" pos="0 0.6 0.02">
 
           <joint name="objjoint" type="free" limited='false' damping="0." armature="0."/>
 
@@ -51,6 +51,7 @@
             solimp="0.95 0.99 0.001" solref="0.005 1"/>
         <joint joint1="right_driver_joint" joint2="left_driver_joint"
             polycoef="0 1 0 0 0" solimp="0.95 0.99 0.001" solref="0.005 1"/>
-        <weld body1="mocap" body2="base" solref="0.02 1"/>
+        <!-- anchor offset compensates for UR10e gripper structure so TCP matches Sawyer -->
+        <weld body1="mocap" body2="base" anchor="0 0 0.12" solref="0.02 1"/>
     </equality>
 </mujoco>
