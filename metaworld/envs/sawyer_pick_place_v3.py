@@ -261,32 +261,34 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
             obj_to_target = float(np.linalg.norm(obj - target))
             tcp_to_obj = float(np.linalg.norm(obj - tcp))
 
-            initial_distance = float(np.linalg.norm(self.obj_init_pos - target))
+            # initial_distance = float(np.linalg.norm(self.obj_init_pos - target))
             
-            in_place_margin = np.linalg.norm(self.obj_init_pos - target)
+            # in_place_margin = np.linalg.norm(self.obj_init_pos - target)
 
-            in_place = reward_utils.tolerance(
-                obj_to_target,
-                bounds=(0, _TARGET_RADIUS),
-                margin=in_place_margin,
-                sigmoid="long_tail",
-            )
+            # in_place = reward_utils.tolerance(
+            #     obj_to_target,
+            #     bounds=(0, _TARGET_RADIUS),
+            #     margin=in_place_margin,
+            #     sigmoid="long_tail",
+            # )
 
-            object_grasped = self._gripper_caging_reward(action, obj)
-            in_place_and_object_grasped = reward_utils.hamacher_product(
-                object_grasped, in_place
-            )
-            reward = in_place_and_object_grasped
+            # object_grasped = self._gripper_caging_reward(action, obj)
+            # in_place_and_object_grasped = reward_utils.hamacher_product(
+            #     object_grasped, in_place
+            # )
+            # reward = in_place_and_object_grasped
 
-            if (
-                tcp_to_obj < 0.02
-                and (tcp_opened > 0)
-                and (obj[2] - 0.01 > self.obj_init_pos[2])
-            ):
-                reward += 1.0 + 5.0 * in_place
-                reward = reward
-            if obj_to_target < _TARGET_RADIUS:
-                reward = 10.0
+            # if (
+            #     tcp_to_obj < 0.02
+            #     and (tcp_opened > 0)
+            #     and (obj[2] - 0.01 > self.obj_init_pos[2])
+            # ):
+            #     reward += 1.0 + 5.0 * in_place
+            #     reward = reward
+            # if obj_to_target < _TARGET_RADIUS:
+            #     reward = 10.0
+
+            reward = obj_to_target
 
             # object_grasped = self._gripper_caging_reward(action, obj)
             
@@ -310,8 +312,10 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
                 tcp_to_obj,
                 tcp_opened,
                 obj_to_target,
-                object_grasped,
-                in_place,
+                # object_grasped,
+                # in_place,
+                0,
+                0,
             )
         else:
             objPos = obs[4:7]
