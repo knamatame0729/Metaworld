@@ -93,6 +93,10 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
             obj_to_target,
             grasp_reward,
             in_place_reward,
+            tcp_to_obj_reward,
+            lift_reward,
+            move_reward,
+            in_place_and_object_grasped
         ) = self.compute_reward(action, obs)
         success = float(obj_to_target <= 0.07)
         near_object = float(tcp_to_obj <= 0.03)
@@ -110,6 +114,11 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
             "in_place_reward": in_place_reward,
             "obj_to_target": obj_to_target,
             "unscaled_reward": reward,
+            "tcp_to_obj": tcp_to_obj,
+            "tcp_to_obj_reward": tcp_to_obj_reward,
+            "lift_reward": lift_reward,
+            "move_reward": move_reward,
+            "in_place_and_object_grasped": in_place_and_object_grasped
         }
 
         return reward, info
@@ -254,7 +263,82 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
 
             obj_to_target = float(np.linalg.norm(obj - target))
             tcp_to_obj = float(np.linalg.norm(obj - tcp))
-            in_place_margin = np.linalg.norm(self.obj_init_pos - target)
+
+            # TCP to Object Reward
+            tcp_to_obj_reward = 0.0
+            if tcp_to_obj < 0.3:
+                tcp_to_obj_reward = (0.3 - tcp_to_obj) / 0.3
+
+            # Caging Reward
+            # Whether the gripper is grasping the object or not
+            object_grasped = self._gripper_caging_reward(action, obj)
+            object_grasped = float(np.clip(object_grasped, 0.0, 1.0))
+
+            # Lift Reward
+            # Whether the object is lifted off the table or not
+            lift_reward = 0.0
+            obj_lifted_height = obj[2] - self.obj_init_pos[2]
+            if obj_lifted_height > 0.01:
+                lift_reward = min(obj_lifted_height / 0.15, 1.0)
+
+            # Move Reward
+            obj_xy = np.array([obj[0], obj[1]])
+            target_xy = np.array([target[0], target[1]])
+            init_xy = np.array([self.obj_init_pos[0], self.obj_init_pos[1]])
+
+            xy_to_target = np.linalg.norm(obj_xy - target_xy)
+            xy_max_dist = np.linalg.norm(init_xy - target_xy)
+
+            move_reward = 0.0
+            progress = (xy_max_dist - xy_to_target) / xy_max_dist
+            move_reward = max(0.0, progress)
+
+            # In Place Reward
+            in_place_margin = float(np.linalg.norm(self.obj_init_pos - target))
+
+            in_place = reward_utils.tolerance(
+                obj_to_target,
+                bounds=(0, _TARGET_RADIUS),
+                margin=in_place_margin,
+                sigmoid="long_tail",
+            )
+            in_place = float(np.clip(in_place, 0.0, 1.0))
+
+            # Combine Rewards
+            in_place_and_object_grasped = reward_utils.hamacher_product(object_grasped, in_place)
+            in_place_and_object_grasped = float(np.clip(in_place_and_object_grasped, 0.0, 1.0))
+
+            # Final Reward
+            reward = (
+                tcp_to_obj_reward * 0.5 +
+                object_grasped * 1.0 +
+                lift_reward * 1.0 +
+                move_reward * 1.0 +
+                in_place * 2.0 +
+                in_place_and_object_grasped * 1.0
+            )
+
+            # Success Bonus
+            if obj_to_target < _TARGET_RADIUS:
+                reward = 10.0
+
+            grasp_reward = object_grasped
+            in_place_reward = in_place
+
+            return (
+                reward,
+                tcp_to_obj,
+                tcp_opened,
+                obj_to_target,
+                object_grasped,
+                in_place,
+                tcp_to_obj_reward,
+                lift_reward,
+                move_reward,
+                in_place_and_object_grasped
+            )
+
+            # in_place_margin = np.linalg.norm(self.obj_init_pos - target)
 
             # in_place = reward_utils.tolerance(
             #     obj_to_target,
@@ -278,29 +362,29 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
             # if obj_to_target < _TARGET_RADIUS:
             #     reward = 10.0
 
-            object_grasped = self._gripper_caging_reward(action, obj)
+            # object_grasped = self._gripper_caging_reward(action, obj)
             
-            if obj_to_target < _TARGET_RADIUS:
-                reward = 10.0
-            else:
-                reward = 10.0 * np.exp(-2.0 * obj_to_target)
+            # if obj_to_target < _TARGET_RADIUS:
+            #     reward = 10.0
+            # else:
+            #     reward = 10.0 * np.exp(-2.0 * obj_to_target)
 
-            in_place_margin = np.linalg.norm(self.obj_init_pos - target)
-            in_place = reward_utils.tolerance(
-                obj_to_target,
-                bounds=(0, _TARGET_RADIUS),
-                margin=in_place_margin,
-                sigmoid="long_tail",
-            )
+            # in_place_margin = np.linalg.norm(self.obj_init_pos - target)
+            # in_place = reward_utils.tolerance(
+            #     obj_to_target,
+            #     bounds=(0, _TARGET_RADIUS),
+            #     margin=in_place_margin,
+            #     sigmoid="long_tail",
+            # )
 
-            return (
-                reward,
-                tcp_to_obj,
-                tcp_opened,
-                obj_to_target,
-                object_grasped,
-                in_place,
-            )
+            # return (
+            #     reward,
+            #     tcp_to_obj,
+            #     tcp_opened,
+            #     obj_to_target,
+            #     object_grasped,
+            #     in_place,
+            # )
         else:
             objPos = obs[4:7]
 

@@ -94,6 +94,10 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
             obj_to_target,
             grasp_reward,
             in_place_reward,
+            tcp_to_obj_reward,
+            lift_reward,
+            move_reward,
+            in_place_and_object_grasped
         ) = self.compute_reward(action, obs)
         success = float(obj_to_target <= 0.07)
         near_object = float(tcp_to_obj <= 0.03)
@@ -111,6 +115,11 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
             "in_place_reward": in_place_reward,
             "obj_to_target": obj_to_target,
             "unscaled_reward": reward,
+            "tcp_to_obj": tcp_to_obj,
+            "tcp_to_obj_reward": tcp_to_obj_reward,
+            "lift_reward": lift_reward,
+            "move_reward": move_reward,
+            "in_place_and_object_grasped": in_place_and_object_grasped
         }
 
         return reward, info
@@ -376,6 +385,10 @@ class SawyerPickPlaceEnvV3(SawyerXYZEnv):
                 obj_to_target,
                 object_grasped,
                 in_place,
+                tcp_to_obj_reward,
+                lift_reward,
+                move_reward,
+                in_place_and_object_grasped
             )
         else:
             objPos = obs[4:7]
