@@ -155,7 +155,6 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
         self._target_pos = goal_pos[-3:]
         self.obj_init_pos = goal_pos[:3]
         self.init_tcp = self.tcp_center
-        # Use UR10e finger names
         self.init_left_pad = self.get_body_com("left_pad")
         self.init_right_pad = self.get_body_com("right_pad")
 
@@ -197,7 +196,6 @@ class UR10ePickPlaceEnvV3(UR10eXYZEnv):
         x_z_success_margin = 0.005
         obj_radius = 0.015
         tcp = self.tcp_center
-        # Use UR10e finger names
         left_pad = self.get_body_com("left_pad")
         right_pad = self.get_body_com("right_pad")
         delta_object_y_left_pad = left_pad[1] - obj_pos[1]
