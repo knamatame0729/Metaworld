@@ -541,14 +541,12 @@ class UR10eXYZEnv(UR10eMocapBase, EzPickle):
 
         if self.curr_path_length >= self.max_path_length:
             raise ValueError("You must reset the env manually once truncate==True")
-        # UR10e has single tendon-based gripper actuator: 0=closed 255=open
-        gripper_ctrl = (action[-1] + 1) / 2 * 255
+        # 1 = close -> * 255 = 255
+        # 0 = open  -> * 255 = 0
+        gripper_ctrl = float(np.clip(action[-1], 0.0, 1.0)) * 255.0
         self.do_simulation([gripper_ctrl], n_frames=self.frame_skip)
 
         self.curr_path_length += 1
-
-        # Running the simulator can sometimes mess up site positions, so
-        # re-position them here to make sure they're accurate
         for site in self._target_site_config:
             self._set_pos_site(*site)
 
@@ -556,7 +554,7 @@ class UR10eXYZEnv(UR10eMocapBase, EzPickle):
             assert self._last_stable_obs is not None
             return (
                 self._last_stable_obs,  # observation just before going unstable
-                0.0,  # reward (penalize for causing instability)
+                0.0,  # reward
                 False,
                 False,  # termination flag always False
                 {  # info
@@ -581,8 +579,6 @@ class UR10eXYZEnv(UR10eMocapBase, EzPickle):
         )
         assert isinstance(self._last_stable_obs, np.ndarray)
         reward, info = self.evaluate_state(self._last_stable_obs, action)
-        # step will never return a terminate==True if there is a success
-        # but we can return truncate=True if the current path length == max path length
         truncate = False
         if self.curr_path_length == self.max_path_length:
             truncate = True
