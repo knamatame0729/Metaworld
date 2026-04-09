@@ -140,6 +140,8 @@ class SawyerWindowCloseEnvV3(SawyerXYZEnv):
             tcp = self.tcp_center
             target = self._target_pos.copy()
 
+            handle_push_target = obj + np.array([0.07, 0.0, 0.3])
+
             target_to_obj: float = obj[0] - target[0]
             target_to_obj = float(np.linalg.norm(target_to_obj))
             target_to_obj_init = self.window_handle_pos_init[0] - target[0]
@@ -152,10 +154,10 @@ class SawyerWindowCloseEnvV3(SawyerXYZEnv):
                 sigmoid="long_tail",
             )
 
-            handle_radius = 0.02
-            tcp_to_obj = float(np.linalg.norm(obj - tcp))
+            handle_radius = 0.005
+            tcp_to_obj = float(np.linalg.norm(handle_push_target - tcp))
             tcp_to_obj_init = float(
-                np.linalg.norm(self.window_handle_pos_init - self.init_tcp)
+                np.linalg.norm(self.window_handle_pos_init + np.array([0.07, 0.0, 0.3]) - self.init_tcp)
             )
             reach = reward_utils.tolerance(
                 tcp_to_obj,
